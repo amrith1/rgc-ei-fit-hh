@@ -26,6 +26,7 @@ setup(
     url="https://github.com/amrith1/rgc-ei-fit-hh",
     license="MIT",
     packages=find_packages(),
+    package_data={"rgc_models": ["mea_512ch_30um_pitch_elec_coords.npy"]},
     install_requires=read_requirements(),
     python_requires=">=3.10",
     classifiers=[

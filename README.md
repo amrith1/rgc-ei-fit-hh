@@ -21,7 +21,7 @@ pip install .               # `.` = this directory
 `pip install .` installs from the repository root (the `.` is a relative path to the current directory). It registers **`rgc_models`** and **`splinex`** and installs pinned dependencies from `requirements.txt` (notably **jaxley==0.9.0**, jax/jaxlib 0.6.1). For GPU/TPU, install matching `jax`/`jaxlib` wheels first if needed: [JAX installation guide](https://docs.jax.dev/en/latest/installation.html).
 
 ```bash
-python -c "from rgc_models.rgc_model import RGC; from splinex.bspline import BSpline; print('OK')"
+python -c "from rgc_models.rgc_model import RGC; from rgc_models.elec_coords import ELECTRODE_LOCATIONS_UM; print(ELECTRODE_LOCATIONS_UM.shape)"
 ```
 
 ## Packages
@@ -35,6 +35,7 @@ python -c "from rgc_models.rgc_model import RGC; from splinex.bspline import BSp
 | `loss_functions.py` | Differentiable EI feature extractors and geometry regularizers: sodium/potassium/capacitive peaks, propagation-delay features, EI widths, and spline/control-point smoothness penalties. |
 | `rgc_location_initialization.py` | Data-driven initialization of soma position and axon trajectory from recorded EIs (axon-vs-soma classification, waypoint extraction, B-spline resampling). |
 | `plotting.py` | Visualization helpers for multi-electrode stimulation response maps. |
+| `elec_coords.py` | Loader for the paper's 512-channel, 30 µm-pitch MEA layout (`mea_512ch_30um_pitch_elec_coords.npy`, um, xyz). Import via `from rgc_models.elec_coords import ELECTRODE_LOCATIONS_UM`. |
 
 ### `splinex`
 
