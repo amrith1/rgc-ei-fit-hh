@@ -24,6 +24,17 @@ pip install .               # `.` = this directory
 python -c "from rgc_models.rgc_model import RGC; from rgc_models.elec_coords import ELECTRODE_LOCATIONS_UM; print(ELECTRODE_LOCATIONS_UM.shape)"
 ```
 
+## Scripts
+
+`scripts/rgc_train_loss_balanced.py` fits one cell with gradient descent on EI features and stimulation thresholds. `--loss_features` selects which loss terms to train on (default: all six). Example (the paper's HH (GD) configuration):
+
+```bash
+python scripts/rgc_train_loss_balanced.py --mode triplet_og \
+    --dataset_path final_triplet_dataset.h5 --output_dir runs/gd \
+    --skip_bielec --loss_features potassium_peaks,estim \
+    --piece 2021-02-13-6 --cell_id 1
+```
+
 ## Packages
 
 ### `rgc_models`

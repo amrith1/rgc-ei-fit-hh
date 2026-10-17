@@ -156,6 +156,9 @@ class RGC:
         self.elec_proximity_mask = self.elec_pairwise_distances < elec_pairwise_dist_threshold
         print(f'Number of proximal electrode pairs: {jnp.sum(self.elec_proximity_mask)}', flush=True)
         self.velocity_elecs_override_used = False  # Track if velocity override is being used
+        # When set via set_training_loss_features, loss_v1/v2 skip ablated ops (not just weight=0).
+        self._training_ei_features = None  # None => all EI features traced
+        self._training_estim_enabled = True
         
         IMPORTANT_ELEC_WEIGHT = 10.0
         if important_elecs is not None:
@@ -517,12 +520,29 @@ class RGC:
 
         return full_params
     
-    def get_ei_features(self, eap):
+    def _is_ei_feature_enabled(self, feature_name: str) -> bool:
+        if self._training_ei_features is None:
+            return True
+        return feature_name in self._training_ei_features
+
+    def set_training_loss_features(self, enabled_loss_features: frozenset[str]) -> None:
+        """Control which EI feature ops and estim are traced in loss_v1/v2 during training."""
+        self._training_ei_features = frozenset(
+            name for name in self.ei_feature_weights if name in enabled_loss_features
+        )
+        self._training_estim_enabled = 'estim' in enabled_loss_features
+
+    def get_ei_features(self, eap, *, training_only: bool = False):
         """
         Get the features of the EAP.
+
+        training_only: when True, skip EI features disabled via set_training_loss_features
+        (used in loss_v1/v2 so ablated terms are not differentiated).
         """
         features = {}
         for feature_name in self.ei_feature_weights.keys():
+            if training_only and not self._is_ei_feature_enabled(feature_name):
+                continue
             if feature_name == 'sodium_peaks':
                 features[feature_name] = sodium_peaks(eap)
             elif feature_name == 'diffusion_peaks':
@@ -626,13 +646,19 @@ class RGC:
         full_params = self.expand_params_v1(params)
         eap, mem_current_per_area, mem_voltage, eap_pre_filter = self.jited_predict_ei(full_params)
 
-        estim_loss = self.estim_loss_weight * self.estim_loss(full_params, estim_data)
+        if self._training_estim_enabled:
+            estim_loss = self.estim_loss_weight * self.estim_loss(full_params, estim_data)
+        else:
+            estim_loss = 0.0
 
-        eap_features = self.get_ei_features(eap)
+        eap_features = self.get_ei_features(eap, training_only=True)
         penalties = self.get_penalties(params)
         feature_losses = {}
 
         for feature_name, weight in self.ei_feature_weights.items():
+            if not self._is_ei_feature_enabled(feature_name):
+                feature_losses[feature_name] = 0.0
+                continue
             if feature_name in ['sodium_peaks', 'diffusion_peaks', 'potassium_peaks']:
                 square_error = jnp.square(eap_features[feature_name] - self.gt_features[feature_name])
                 weighted_square_error = weight * square_error * self.loss_elec_weightings
@@ -716,10 +742,14 @@ class RGC:
         full_params = self.expand_params_v1(params)
         eap, mem_current_per_area, mem_voltage, eap_pre_filter = self.jited_predict_ei(full_params)
 
-        estim_loss_unweighted = self.estim_loss(full_params, estim_data)
-        estim_loss = estim_weight * estim_loss_unweighted
+        if self._training_estim_enabled:
+            estim_loss_unweighted = self.estim_loss(full_params, estim_data)
+            estim_loss = estim_weight * estim_loss_unweighted
+        else:
+            estim_loss_unweighted = 0.0
+            estim_loss = 0.0
 
-        eap_features = self.get_ei_features(eap)
+        eap_features = self.get_ei_features(eap, training_only=True)
         penalties = self.get_penalties(params)
         
         feature_losses = {}  # Weighted losses
@@ -729,6 +759,10 @@ class RGC:
         # GradNorm handles all loss balancing dynamically
         for i, feature_name in enumerate(self.EI_FEATURE_ORDER):
             weight = ei_weights[i]
+            if not self._is_ei_feature_enabled(feature_name):
+                feature_losses[feature_name] = 0.0
+                feature_losses_unweighted[feature_name] = 0.0
+                continue
             
             if feature_name in ['sodium_peaks', 'diffusion_peaks', 'potassium_peaks']:
                 square_error = jnp.square(eap_features[feature_name] - self.gt_features[feature_name])
